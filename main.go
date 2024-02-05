@@ -19,6 +19,8 @@ type wakeUp struct {
 	customer int
 }
 
+const barberNum = 2
+
 var wakeBellChan = make(chan wakeUp)
 
 func main() {
@@ -26,8 +28,23 @@ func main() {
 	go incomingCustomer()
 	wg.Add(1)
 	go controlBarberWork()
-	wg.Add(1)
-	go startService()
+	// if there is only one Barber then run only one goroutine
+	// for the Barber which is startService() and in this
+	// scenario, you have to set barberNum = 1
+	//
+	// wg.Add(1)
+	// go startService()
+	//
+	// If there are multiple Barber then you have to run one
+	// goroutine(startService()) for each Barber.
+	// Suppose there are 5 Barbers then you have to run 5
+	// instances of goroutine startService() which is
+	// 5 startService() goroutines.in this scenario,
+	// you have to set barberNum = 5
+	for i := 1; i <= barberNum; i++ {
+		wg.Add(1)
+		go startService(i)
+	}
 
 	wg.Wait()
 }
@@ -92,7 +109,14 @@ func controlBarberWork() {
 			}
 			wakeBellChan <- newWakeBell
 
-			endWorkChan <- true
+			// if there are more than one Barber then we
+			// have to send signal to the endWorkChan that
+			// many times so that every Barbers gets the
+			// signal to end work and go home
+			for i := 0; i < barberNum; i++ {
+				endWorkChan <- true
+			}
+
 			return
 		} else {
 			if val == 0 {
@@ -103,14 +127,36 @@ func controlBarberWork() {
 				customer: val,
 			}
 			wakeBellChan <- newWakeBell
-
 		}
 
 	}
 
 }
 
-func startService() {
+// func startService() {
+// 	defer wg.Done()
+// 	for {
+// 		time.Sleep(1 * time.Second)
+// 		select {
+// 		// wake up the Barber
+// 		case customerNumber := <-wakeBellChan:
+// 			if customerNumber.customer == 2000 {
+// 				fmt.Println("Barber is sleeping now")
+// 			} else {
+// 				fmt.Printf("Barber has started providing its service to customer%d\n", customerNumber.customer)
+// 				time.Sleep(2 * time.Second)
+// 			}
+// 		case <-endWorkChan:
+// 			fmt.Println("Shop is closed now. Barber has left for Home. ")
+// 			return
+// 		default:
+// 			fmt.Println("Barber is sleeping now")
+// 		}
+// 	}
+
+// }
+
+func startService(barbers int) {
 	defer wg.Done()
 	for {
 		time.Sleep(1 * time.Second)
@@ -118,16 +164,16 @@ func startService() {
 		// wake up the Barber
 		case customerNumber := <-wakeBellChan:
 			if customerNumber.customer == 2000 {
-				fmt.Println("Barber is sleeping now")
+				fmt.Printf("Barber%d is sleeping now\n", barbers)
 			} else {
-				fmt.Printf("Barber has started providing its service to customer%d\n", customerNumber.customer)
+				fmt.Printf("Barber%d has started providing its service to customer%d\n", barbers, customerNumber.customer)
 				time.Sleep(2 * time.Second)
 			}
 		case <-endWorkChan:
-			fmt.Println("Shop is closed now. Barber has left for Home. ")
+			fmt.Printf("Shop is closed now and no customer is waiting. So, Barber%d has left for Home. \n", barbers)
 			return
 		default:
-			fmt.Println("Barber is sleeping now")
+			fmt.Printf("Barber%d is sleeping now\n", barbers)
 		}
 	}
 
