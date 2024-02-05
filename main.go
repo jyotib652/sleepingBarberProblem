@@ -7,7 +7,8 @@ import (
 )
 
 var (
-	wg = sync.WaitGroup{}
+	wg  = sync.WaitGroup{}
+	mut = sync.RWMutex{}
 
 	seats       []int
 	endWorkChan = make(chan bool)
@@ -61,22 +62,31 @@ func incomingCustomer() {
 		time.Sleep(1 * time.Second)
 		customerNumber++
 		breakForBarber++
-		if len(seats) < 5 {
+		mut.RLock() // mutex read lock
+		seatLength := len(seats)
+		mut.RUnlock() // mutex read unlock
+		if seatLength < 5 {
 			// Let's provide some break to the Barber by
 			// not sending customers for a brief period of time
 			if breakForBarber > 10 && noBreaksProvided < 6 {
+				mut.Lock() // mutex write lock
 				seats = append(seats, 2000)
+				mut.Unlock() // mutex write unlock
 				noBreaksProvided++
 				customerNumber-- // Since, we are not adding actual customers for 5 iterations
 			} else {
 				// Now, send some new customers to the Barber
+				mut.Lock() // mutex write lock
 				seats = append(seats, customerNumber)
+				mut.Unlock() // mutex write unlock
 			}
 		} else {
 			fmt.Printf("customer%d has left as seats are full\n", customerNumber)
 		}
 	}
+	mut.Lock() // mutex write lock
 	endWork = true
+	mut.Unlock() // mutex write unlock
 }
 
 func controlBarberWork() {
@@ -88,12 +98,21 @@ func controlBarberWork() {
 	// When not working barber is sleeping
 	for {
 		val := 0
-		if len(seats) > 0 {
+		mut.RLock() // mutex read lock
+		seatLength := len(seats)
+		mut.RUnlock() // mutex read lock
+		if seatLength > 0 {
+			mut.Lock() // mutex write lock
 			val = seats[0]
 			seats = seats[1:]
+			mut.Unlock() // mutex write unlock
 		}
 
-		if endWork && len(seats) == 0 {
+		mut.RLock() // mutex read lock
+		checkSeatLength := len(seats)
+		endWorkVal := endWork
+		mut.RUnlock() // mutex read lock
+		if endWorkVal && checkSeatLength == 0 {
 			// when the time to close the shop arrives it is time
 			// to close the shop but there are some waiting customers.
 			// So we didn't shut down the shop yet and patiently
@@ -178,3 +197,10 @@ func startService(barbers int) {
 	}
 
 }
+
+// run "go run -race main.go" command to check the existance of Race Condition
+// in this application.
+// To mitigate Race condition Problem, use Mutex.
+// RWMutex is faster than the Mutex that's why RWMutex is used in this application.
+// Since, Mutex blocks for both the read and write whereas RWMutex only blocks
+// during write that's why RWMutex is faster(more performant) than Mutex.
